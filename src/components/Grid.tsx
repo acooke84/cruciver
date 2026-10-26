@@ -14,7 +14,14 @@ interface GridProps {
   ghost: Map<number, string>
   /** Cell index -> letters still workable there, for squares with very few (see troubleSpots). */
   trouble: Map<number, number>
+  /** Squares selected for a region autofill. */
+  region: ReadonlySet<number>
   onSelect: (index: number) => void
+  /**
+   * Shift+click (`start`) or Shift+drag (`extend`) to the square at `index`, growing the
+   * autofill region; `clear` on a plain click, which drops it.
+   */
+  onRegion: (action: 'start' | 'extend' | 'clear', index: number) => void
   /** `startOfStroke` marks the first cell of a drag so it becomes one undo step. */
   onPaint: (index: number, block: boolean, startOfStroke: boolean) => void
   onKeyDown: (event: React.KeyboardEvent) => void
@@ -40,17 +47,22 @@ export function Grid({
   flags,
   ghost,
   trouble,
+  region,
   onSelect,
+  onRegion,
   onPaint,
   onKeyDown,
 }: GridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   /** While painting blocks, every cell dragged over is set to this value. */
   const paintValue = useRef<boolean | null>(null)
+  /** True while a Shift+drag is stretching the autofill region. */
+  const regionDrag = useRef(false)
 
   useEffect(() => {
     const stop = () => {
       paintValue.current = null
+      regionDrag.current = false
     }
     window.addEventListener('pointerup', stop)
     window.addEventListener('pointercancel', stop)
@@ -74,20 +86,26 @@ export function Grid({
         const next = !puzzle.grid[index]?.block
         paintValue.current = next
         onPaint(index, next, true)
+      } else if (event.shiftKey) {
+        // Shift marks out a region to autofill and leaves the selection where it is.
+        regionDrag.current = true
+        onRegion('start', index)
       } else {
+        onRegion('clear', index)
         onSelect(index)
       }
     },
-    [mode, puzzle.grid, onPaint, onSelect],
+    [mode, puzzle.grid, onPaint, onSelect, onRegion],
   )
 
   const handlePointerEnter = useCallback(
     (index: number) => {
+      if (mode === 'content' && regionDrag.current) return onRegion('extend', index)
       if (mode !== 'structure' || paintValue.current === null) return
       if (puzzle.grid[index]?.block === paintValue.current) return
       onPaint(index, paintValue.current, false)
     },
-    [mode, puzzle.grid, onPaint],
+    [mode, puzzle.grid, onPaint, onRegion],
   )
 
   const size = cellSize(puzzle.cols, puzzle.rows)
@@ -123,6 +141,7 @@ export function Grid({
           mode={mode}
           selected={selected === index && mode === 'content'}
           inWord={wordCells.has(index)}
+          inRegion={mode === 'content' && region.has(index)}
           problems={flags.get(index)}
           onPointerDown={handlePointerDown}
           onPointerEnter={handlePointerEnter}

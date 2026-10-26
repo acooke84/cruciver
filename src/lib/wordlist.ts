@@ -49,6 +49,17 @@ export function hasRebus(squares: Squares): boolean {
   return squares.some((s) => s.length > 1)
 }
 
+/**
+ * The user's own judgements, keyed by uppercase entry: a 0-100 score replaces the base list's
+ * (or adds the entry when the list lacks it), and `'banned'` drops the entry altogether.
+ */
+export type WordOverrides = Readonly<Record<string, number | 'banned'>>
+
+/** True for an entry that could go in a grid: A-Z/0-9 and a length the grid can hold. */
+export function isValidEntry(word: string): boolean {
+  return word.length >= MIN_ENTRY_LENGTH && word.length <= MAX_SIZE && VALID_ENTRY.test(word)
+}
+
 /** A built index in a form that can be posted between threads. */
 export interface WordListData {
   size: number
@@ -69,23 +80,32 @@ export class WordList {
   ) {}
 
   /**
-   * Parse `WORD;score` or `WORD;score;seen` lines. Entries that can't go in a grid (wrong
-   * length, characters other than A-Z/0-9) are dropped; duplicates keep their best score.
+   * Parse `WORD;score` or `WORD;score;seen` lines (see `parseEntries`), then apply the user's
+   * `overrides`.
+   *
+   * Overrides are applied while building rather than filtered at query time, so banned and
+   * rescored entries cost nothing per query and every consumer — suggestions, autofill,
+   * trouble marks — sees the same list.
    */
-  static parse(text: string): WordList {
-    const best = new Map<string, WordInfo>()
-    for (const line of text.split('\n')) {
-      const [raw = '', rawScore = '', rawSeen = ''] = line.split(';')
-      const word = raw.trim().toUpperCase()
-      if (word.length < MIN_ENTRY_LENGTH || word.length > MAX_SIZE) continue
-      if (!VALID_ENTRY.test(word)) continue
+  static parse(text: string, overrides: WordOverrides = {}): WordList {
+    return WordList.withOverrides(parseEntries(text), overrides)
+  }
 
-      const score = Math.max(0, Math.min(100, Math.round(Number(rawScore) || 0)))
-      const seen = Math.max(0, Math.round(Number(rawSeen) || 0))
-      const existing = best.get(word)
-      if (!existing || score > existing.score) best.set(word, { word, score, seen })
+  /**
+   * Index parsed base entries with `overrides` applied. Lets the engine keep the parsed base
+   * and rebuild when the overrides change without re-reading the text. `base` isn't modified.
+   */
+  static withOverrides(base: ReadonlyMap<string, WordInfo>, overrides: WordOverrides): WordList {
+    const entries = new Map(base)
+    for (const [word, value] of Object.entries(overrides)) {
+      if (value === 'banned') {
+        entries.delete(word)
+      } else if (isValidEntry(word) && Number.isFinite(value)) {
+        const score = Math.max(0, Math.min(100, Math.round(value)))
+        entries.set(word, { word, score, seen: base.get(word)?.seen ?? 0 })
+      }
     }
-    return WordList.fromEntries([...best.values()])
+    return WordList.fromEntries([...entries.values()])
   }
 
   /** Index entries that are already valid and unique. */
@@ -213,6 +233,26 @@ export class WordList {
     })
     return out
   }
+}
+
+/**
+ * Read `WORD;score` or `WORD;score;seen` lines into entries keyed by word. Entries that can't
+ * go in a grid (wrong length, characters other than A-Z/0-9) are dropped; duplicates keep
+ * their best score.
+ */
+export function parseEntries(text: string): Map<string, WordInfo> {
+  const best = new Map<string, WordInfo>()
+  for (const line of text.split('\n')) {
+    const [raw = '', rawScore = '', rawSeen = ''] = line.split(';')
+    const word = raw.trim().toUpperCase()
+    if (!isValidEntry(word)) continue
+
+    const score = Math.max(0, Math.min(100, Math.round(Number(rawScore) || 0)))
+    const seen = Math.max(0, Math.round(Number(rawSeen) || 0))
+    const existing = best.get(word)
+    if (!existing || score > existing.score) best.set(word, { word, score, seen })
+  }
+  return best
 }
 
 /** Number of leading entries scoring at least `minScore`, given scores sorted descending. */

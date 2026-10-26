@@ -30,6 +30,8 @@ export function PuzzleEditor({ id }: { id: string }) {
   const [direction, setDirection] = useState<Direction>('A')
   /** A suggestion being hovered, to pencil into the active entry's open squares. */
   const [preview, setPreview] = useState<string | null>(null)
+  /** Opposite corners of the rectangle marked out for a region autofill. */
+  const [regionRect, setRegionRect] = useState<{ anchor: number; corner: number } | null>(null)
 
   const isWhite = useCallback((index: number) => puzzle?.grid[index]?.block === false, [puzzle])
 
@@ -60,6 +62,43 @@ export function PuzzleEditor({ id }: { id: string }) {
         ? troubleSpots(wordList.list, numbering, minScore)
         : new Map<number, number>(),
     [wordList, numbering, minScore, showTrouble, mode],
+  )
+
+  /** Every non-block square inside the region rectangle, in grid order. */
+  const region = useMemo((): number[] => {
+    if (!puzzle || !regionRect) return []
+    const { cols, grid } = puzzle
+    const { anchor, corner } = regionRect
+    const r0 = Math.min(rowOf(anchor, cols), rowOf(corner, cols))
+    const r1 = Math.max(rowOf(anchor, cols), rowOf(corner, cols))
+    const c0 = Math.min(colOf(anchor, cols), colOf(corner, cols))
+    const c1 = Math.max(colOf(anchor, cols), colOf(corner, cols))
+    const cells: number[] = []
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const i = idx(r, c, cols)
+        if (grid[i]?.block === false) cells.push(i)
+      }
+    }
+    return cells
+  }, [puzzle, regionRect])
+  const regionSet = useMemo(() => new Set(region), [region])
+
+  // A region is only meaningful in Content mode, on the grid it was drawn on.
+  useEffect(() => setRegionRect(null), [mode, puzzle?.rows, puzzle?.cols])
+
+  const handleRegion = useCallback(
+    (action: 'start' | 'extend' | 'clear', index: number) => {
+      if (action === 'clear') {
+        setRegionRect(null)
+      } else if (action === 'extend') {
+        setRegionRect((prev) => (prev ? { ...prev, corner: index } : prev))
+      } else {
+        // Shift+click stretches from the selected square, like extending a text selection.
+        setRegionRect((prev) => ({ anchor: selected ?? prev?.anchor ?? index, corner: index }))
+      }
+    },
+    [selected],
   )
 
   // Keep the selection on a real square as the grid changes underneath it.
@@ -164,6 +203,13 @@ export function PuzzleEditor({ id }: { id: string }) {
         return
       }
 
+      // Esc drops a region before it drops the selection.
+      if (key === 'Escape' && regionRect) {
+        event.preventDefault()
+        setRegionRect(null)
+        return
+      }
+
       if (selected === null) return
 
       if (key === 'Escape') {
@@ -232,7 +278,7 @@ export function PuzzleEditor({ id }: { id: string }) {
         if (next !== null) setSelected(next)
       }
     },
-    [puzzle, mode, selected, direction, step, stepEntry, update],
+    [puzzle, mode, selected, direction, regionRect, step, stepEntry, update],
   )
 
   // Undo/redo, except while the caret is in a text field.
@@ -350,7 +396,9 @@ export function PuzzleEditor({ id }: { id: string }) {
             flags={flags}
             ghost={ghost}
             trouble={trouble}
+            region={regionSet}
             onSelect={selectCell}
+            onRegion={handleRegion}
             onPaint={paint}
             onKeyDown={handleGridKeyDown}
           />
@@ -371,8 +419,8 @@ export function PuzzleEditor({ id }: { id: string }) {
             ) : (
               <>
                 Type to fill the grid. <kbd>Space</kbd> flips Across/Down, <kbd>Tab</kbd> jumps to
-                the next entry, <kbd>arrows</kbd> move, <kbd>Esc</kbd> deselects. Blue letters are
-                pencilled in by autofill.
+                the next entry, <kbd>arrows</kbd> move, <kbd>Esc</kbd> deselects. <kbd>Shift</kbd>
+                +drag marks squares to autofill. Blue letters are pencilled in by autofill.
               </>
             )}
           </p>
@@ -396,6 +444,7 @@ export function PuzzleEditor({ id }: { id: string }) {
               problems={problems}
               activeSlot={activeSlot}
               selectedCell={selected}
+              region={region}
               update={update}
               onSelectSlot={selectSlot}
               onSelectCell={jumpToCell}

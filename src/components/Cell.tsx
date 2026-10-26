@@ -27,6 +27,8 @@ interface CellProps {
   selected: boolean
   /** True for every square of the entry running in the active direction. */
   inWord: boolean
+  /** Part of the region selected for autofill. */
+  inRegion: boolean
   /** Error messages affecting this square; undefined when the square is fine. */
   problems: string[] | undefined
   onPointerDown: (index: number, event: React.PointerEvent) => void
@@ -45,6 +47,7 @@ export function Cell({
   mode,
   selected,
   inWord,
+  inRegion,
   problems,
   onPointerDown,
   onPointerEnter,
@@ -55,6 +58,7 @@ export function Cell({
   if (block) classes.push('block')
   if (selected) classes.push('selected')
   else if (inWord) classes.push('in-word')
+  if (inRegion) classes.push('in-region')
   if (flagged) classes.push('flagged')
   if (locked) classes.push('locked')
   if (trouble !== undefined) classes.push(trouble === 0 ? 'trouble-dead' : 'trouble-tight')
@@ -62,7 +66,10 @@ export function Cell({
   const clue = number !== undefined ? `, clue ${number}` : ''
   const content = block ? 'black square' : letter || 'empty'
   const reason = flagged ? `. ${problems.join(' ')}` : ''
-  const state = (locked ? ', locked' : '') + (pencil ? ', pencilled' : '')
+  const state =
+    (locked ? ', locked' : '') +
+    (pencil ? ', pencilled' : '') +
+    (inRegion ? ', in fill selection' : '')
   const troubleNote =
     trouble === undefined
       ? undefined

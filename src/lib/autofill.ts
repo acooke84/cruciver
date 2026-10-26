@@ -9,6 +9,12 @@ export interface FillOptions {
   seed: number
   /** Give up after this many words have been tried. */
   maxSteps?: number
+  /**
+   * Grid squares to fill; the whole grid when absent. Everything outside stays as it is —
+   * pencil included — and constrains the fill. Only entries with an open square inside are
+   * searched, and only squares inside are reported.
+   */
+  region?: number[]
 }
 
 export type FillOutcome =
@@ -123,12 +129,19 @@ const lowBit = (m: number) => 31 - Math.clz32(m & -m)
  * Typed letters are fixed; pencilled ones are treated as open, so rerunning replaces an
  * earlier fill. Entries through a rebus square are left out, and no entry is used twice.
  *
+ * With a `region`, only pencil inside it counts as open, and only entries with an open square
+ * inside it are searched. Open squares outside that those entries cross are still solved for
+ * — the entry has to be a real word — but aren't reported, and entries wholly outside aren't
+ * checked, so they may be left harder (or impossible) to fill.
+ *
  * The search runs in slices via `run`, so a worker can report progress and stay cancellable.
  */
 export class FillSearch {
   private readonly minScore: number
   private readonly maxSteps: number
   private readonly random: () => number
+  /** Squares that may be reported; null for the whole grid. */
+  private readonly region: Set<number> | null
 
   private readonly slots: SearchSlot[] = []
   /** Grid square -> [slot index, position in slot] for each search slot through it. */
@@ -162,7 +175,12 @@ export class FillSearch {
     this.maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS
     this.random = rng(options.seed)
 
-    const grid = puzzle.grid.map((cell) => (cell.pencil ? { block: false, letter: '' } : cell))
+    this.region = options.region ? new Set(options.region) : null
+    const inRegion = (i: number) => !this.region || this.region.has(i)
+
+    const grid = puzzle.grid.map((cell, i) =>
+      cell.pencil && inRegion(i) ? { block: false, letter: '' } : cell,
+    )
     this.masks = new Int32Array(grid.length)
     grid.forEach((cell, i) => {
       if (!cell.block && cell.letter === '') this.masks[i] = ALL_LETTERS
@@ -175,6 +193,8 @@ export class FillSearch {
         continue
       }
       if (hasRebus(slot.letters)) continue
+      // Entries with nothing to fill in the region are someone else's problem.
+      if (!slot.cells.some((cell, at) => slot.letters[at] === '' && inRegion(cell))) continue
 
       const bucket = list.bucket(slot.length) ?? EMPTY_BUCKET
       const domain = list.match(slot.letters, this.minScore) ?? new Uint32Array(0)
@@ -281,6 +301,8 @@ export class FillSearch {
     const letters: [number, string][] = []
     this.masks.forEach((mask, cell) => {
       // One letter left. Squares outside every search slot (beside a rebus) keep a full mask.
+      // Squares outside the region were solved only to keep their entries real words.
+      if (this.region && !this.region.has(cell)) return
       if (mask !== 0 && (mask & (mask - 1)) === 0) {
         letters.push([cell, String.fromCharCode(65 + lowBit(mask))])
       }

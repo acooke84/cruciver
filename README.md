@@ -39,6 +39,8 @@ Resizing keeps everything that still fits, anchored to the top-left.
 - <kbd>Space</kbd> flips between Across and Down, <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd>
   move between entries, arrow keys move the cursor (a perpendicular arrow turns first),
   <kbd>Backspace</kbd> deletes and steps back, <kbd>Esc</kbd> deselects.
+- <kbd>Shift</kbd>+click or <kbd>Shift</kbd>+drag marks out a rectangle of squares for
+  autofill (see below); a plain click or <kbd>Esc</kbd> drops it.
 - The entry inspector is where editing happens: the active entry's clue, its pattern (each
   square coloured by how pinned down it is by the entry crossing it), fill suggestions from
   the word list, and a **Lock** button that protects the entry's letters (see below).
@@ -65,8 +67,24 @@ The entry inspector suggests entries for the active slot from a scored word list
   — green is wide open, amber is under five, red means it strands a crossing entirely.
   Stranding suggestions sink to the bottom; hover the meter to see which crossing it is.
 - Hover a suggestion to pencil it into the grid; click to write it in (one undo step).
-- *NYT×n* marks entries seen in the Rex Parker corpus below. A filled entry shows its own score,
-  or warns when it isn't in the list at all.
+- *NYT×n* marks entries seen in the Rex Parker corpus below. A filled entry shows its own score
+  (pick another to rescore it), or offers to add it to your words when it isn't in the list.
+
+### My words
+
+The list is a starting point; your taste overrides it. **Edit my words…** in the Fill panel
+opens a per-browser list of your own judgements (kept in `localStorage`):
+
+- **A score** (0–100) replaces the list's score for that entry, or adds the entry if the list
+  doesn't have it.
+- **Never suggest** bans an entry outright. The × that appears when you hover a suggestion
+  does the same in one click.
+
+Overrides apply everywhere the word list is used — suggestions, autofill and the trouble-spot
+marks — because the engine rebuilds its index with them applied (a second or so for the full
+list; the panel says *Updating word list…* meanwhile, and the previous list keeps answering).
+Entries must be 3–25 characters of A–Z or 0–9; spaces are dropped, so *ice age* becomes
+ICEAGE.
 
 ## Autofill
 
@@ -76,6 +94,15 @@ fill, **Keep fill** turns them into ordinary typed letters, **Erase fill** remov
 typing over one inks it. Typed letters are never changed, so the usual loop is: type the
 entries you care about, autofill around them, keep what you like, repeat. The whole fill
 undoes as one step.
+
+To fill just one corner, <kbd>Shift</kbd>+drag across it (or <kbd>Shift</kbd>+click from the
+selected square) and choose **Fill selection**. Only the marked squares are written; every
+letter outside them — typed *or* pencilled — stays put and constrains the fill, so you can
+fill a grid section by section and keep the parts you like. Pencil inside the selection is
+replaced, as with a whole-grid fill. Entries crossing the selection must still come out as
+real words, but entries entirely outside it aren't checked: empty squares outside the
+selection aren't guaranteed to remain fillable afterwards. If that happens, widen the
+selection or fill the whole grid.
 
 **Lock** (in the entry inspector) protects an entry's letters from typing, *Clear letters*
 and autofill — useful for theme entries. Locked squares get a small corner notch.
@@ -126,7 +153,8 @@ The app indexes the list in a Web Worker (about a second for the full list) and 
 page a copy, which answers pattern queries with bitset intersections — fast enough to re-rank
 every candidate against its crossings on each keystroke. The worker keeps its own copy for
 autofill. Each copy is about 24 MB of bitsets plus the 564k words themselves — very roughly
-45 MB, so around 90–100 MB for the two.
+45 MB, so around 90–100 MB for the two. The worker also holds on to the parsed entries so it
+can rebuild without re-downloading when your words change.
 
 ## Answer corpus
 
@@ -193,7 +221,7 @@ src/
     router.ts            hash routing (#/, #/puzzle/:id, #/puzzle/:id/print)
   storage/               PuzzleStore interface + localStorage adapter + JSON import/export
   hooks/                 usePuzzle (state, autosave, undo), usePuzzleList, useWordList (engine),
-                         useFillSettings (min score, trouble marks)
+                         useFillSettings (min score, trouble marks), useWordOverrides (my words)
   components/            HomeScreen, PuzzleEditor, Grid, Structure/Content panels, PrintView
 ```
 

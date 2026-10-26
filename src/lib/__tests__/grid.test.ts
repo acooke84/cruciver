@@ -118,6 +118,20 @@ describe('pencil and lock', () => {
     expect(erased[0]?.letter).toBe('A')
   })
 
+  it('erases pencil only in the given squares', () => {
+    const puzzle = puzzleFrom(['a..', '...', '...'])
+    puzzle.grid = writePencil(puzzle, [
+      [1, 'B'],
+      [2, 'C'],
+      [4, 'D'],
+    ])
+    const erased = clearPencil(puzzle, [0, 1, 4])
+    expect(erased[0]).toEqual({ block: false, letter: 'A' })
+    expect(erased[1]).toEqual({ block: false, letter: '' })
+    expect(erased[2]).toEqual({ block: false, letter: 'C', pencil: true })
+    expect(erased[4]).toEqual({ block: false, letter: '' })
+  })
+
   it('protects locked squares from typing, filling and clearing', () => {
     const puzzle = puzzleFrom(['abc', '...', '...'])
     puzzle.grid = setLocked(puzzle, [0, 1, 2], true)
