@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Slot } from '../../types/puzzle'
 import { computeNumbering } from '../slots'
 import { suggest } from '../suggest'
 import { WordList } from '../wordlist'
@@ -76,6 +77,18 @@ describe('suggest', () => {
     const numbering = computeNumbering(puzzle)
     const slot = numbering.byKey.get('A:0,0')!
     expect(suggest(list, numbering, slot, { minScore: 0, limit: 10 }).status).toBe('rebus')
+  })
+
+  it('offers digits only where one is already typed', () => {
+    const digits = WordList.parse('B2BS;90\nBOBS;50')
+    const open = slotFor(['....', '####', '####', '####'], 'A:0,0')
+    const fixed = slotFor(['B2..', '####', '####', '####'], 'A:0,0')
+    const words = (s: { numbering: ReturnType<typeof computeNumbering>; slot: Slot }) => {
+      const result = suggest(digits, s.numbering, s.slot, { minScore: 0, limit: 10 })
+      return result.status === 'ok' ? result.suggestions.map((x) => x.word) : []
+    }
+    expect(words(open)).toEqual(['BOBS'])
+    expect(words(fixed)).toEqual(['B2BS'])
   })
 
   it('caps the list but still reports the full total', () => {

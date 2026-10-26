@@ -62,6 +62,9 @@ export function suggest(
   const scored: Suggestion[] = []
   for (const candidate of list.matches(slot.letters, minScore)) {
     if (used.has(candidate.word)) continue
+    // Like autofill, only offer letters for open squares — entries such as MP3J score highly
+    // in the list but a digit is almost never what an empty square wants.
+    if (slot.letters.some((l, i) => !l && /[0-9]/.test(candidate.word[i] ?? ''))) continue
 
     let crossOptions = Infinity
     let tightest: Slot | undefined
