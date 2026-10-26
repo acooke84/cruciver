@@ -4,6 +4,7 @@ import { MIN_SCORE_OPTIONS, setFillSettings, useFillSettings } from '../hooks/us
 import { startAutofill, type AutofillRun, type WordListState } from '../hooks/useWordList'
 import { acceptPencil, clearPencil, hasPencil, writePencil } from '../lib/grid'
 import { MIN_ENTRY_LENGTH } from '../lib/validation'
+import { openMyWords } from './MyWordsDialog'
 
 /** How long a search may run before it gives up. */
 const TIME_LIMIT_MS = 30_000
@@ -12,6 +13,8 @@ interface FillPanelProps {
   puzzle: Puzzle
   numbering: Numbering
   wordList: WordListState
+  /** Squares marked out with Shift+drag; autofill can be confined to them. */
+  region: number[]
   update: (fn: (current: Puzzle) => Puzzle) => void
   onJumpToSlot: (slotKey: string) => void
 }
@@ -33,7 +36,14 @@ function slotLabel(numbering: Numbering, key: string): string {
  * Word list settings and autofill: run a search in the engine worker, pencil the result into
  * the grid, then keep or erase it. Typed letters are never touched.
  */
-export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }: FillPanelProps) {
+export function FillPanel({
+  puzzle,
+  numbering,
+  wordList,
+  region,
+  update,
+  onJumpToSlot,
+}: FillPanelProps) {
   const { minScore, showTrouble } = useFillSettings()
   const [running, setRunning] = useState<{ steps: number } | null>(null)
   const [message, setMessage] = useState<Message | null>(null)
@@ -44,17 +54,28 @@ export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }:
 
   const pencilled = hasPencil(puzzle)
   // Pencilled squares count as open: autofill is free to replace them.
-  const open = puzzle.grid.some((cell) => !cell.block && (cell.letter === '' || cell.pencil))
+  const isOpen = (index: number) => {
+    const cell = puzzle.grid[index]
+    return cell !== undefined && !cell.block && (cell.letter === '' || cell.pencil === true)
+  }
+  const open = puzzle.grid.some((_, i) => isOpen(i))
+  const regionOpen = region.filter(isOpen).length
   const ready = wordList.status === 'ready'
   // No word list entry is shorter than the minimum, so a too-short entry can never fill.
   const tooShort = numbering.slots.find((slot) => slot.length < MIN_ENTRY_LENGTH)
 
-  const autofill = async () => {
+  /** Fill the whole grid, or with `only` just those squares, holding everything else fixed. */
+  const autofill = async (only?: number[]) => {
     setMessage(null)
     setRunning({ steps: 0 })
     const run = startAutofill(
       puzzle,
-      { minScore, seed: Math.floor(Math.random() * 2 ** 31), timeLimitMs: TIME_LIMIT_MS },
+      {
+        minScore,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        timeLimitMs: TIME_LIMIT_MS,
+        region: only,
+      },
       (steps) => setRunning({ steps }),
     )
     runRef.current = run
@@ -66,23 +87,26 @@ export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }:
     const took =
       elapsedMs < 1000 ? 'under a second' : `${(elapsedMs / 1000).toFixed(elapsedMs < 10_000 ? 1 : 0)}s`
     if (outcome?.status === 'filled') {
-      // Replace any earlier fill wholesale; one undo step takes the whole thing back out.
+      // Replace any earlier fill wholesale (within the region, if there is one); one undo step
+      // takes the whole thing back out.
       update((current) => ({
         ...current,
-        grid: writePencil({ ...current, grid: clearPencil(current) }, outcome.letters),
+        grid: writePencil({ ...current, grid: clearPencil(current, only) }, outcome.letters),
       }))
       const n = outcome.entries
       setMessage({
         tone: 'ok',
-        text: `Filled ${n} ${n === 1 ? 'entry' : 'entries'} in ${took}.`,
+        text: `Filled ${n} ${n === 1 ? 'entry' : 'entries'}${only ? ' in the selection' : ''} in ${took}.`,
         hint: 'Change anything you like — typed letters stay put next time. Try another fill for a different one.',
       })
     } else if (outcome?.status === 'stuck') {
       setMessage({
         tone: 'warn',
-        text: `Nothing in the word list fits ${slotLabel(numbering, outcome.slotKey)} with the letters already typed${minScore > 0 ? ` at score ${minScore}+` : ''}.`,
+        text: `Nothing in the word list fits ${slotLabel(numbering, outcome.slotKey)} with the letters ${only ? 'around the selection' : 'already typed'}${minScore > 0 ? ` at score ${minScore}+` : ''}.`,
         slotKey: outcome.slotKey,
-        hint: 'Change a letter there, or lower the minimum score.',
+        hint: only
+          ? 'Widen the selection, change a letter there, or lower the minimum score.'
+          : 'Change a letter there, or lower the minimum score.',
       })
     } else if (outcome || timedOut) {
       const hardest = outcome && 'hardest' in outcome ? outcome.hardest : undefined
@@ -134,13 +158,23 @@ export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }:
           </div>
         ) : (
           <div className="fill-row">
+            {regionOpen > 0 && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => void autofill(region)}
+                disabled={!ready || tooShort !== undefined}
+                title="Fill only the marked squares, keeping every letter outside them"
+              >
+                Fill selection ({regionOpen} {regionOpen === 1 ? 'square' : 'squares'})
+              </button>
+            )}
             <button
-              className="btn btn-primary btn-sm"
+              className={'btn btn-sm' + (regionOpen > 0 ? '' : ' btn-primary')}
               onClick={() => void autofill()}
               disabled={!ready || !open || tooShort !== undefined}
               title={!open ? 'Every square already has a typed letter' : undefined}
             >
-              {pencilled ? 'Try another fill' : 'Autofill grid'}
+              {regionOpen > 0 ? 'Whole grid' : pencilled ? 'Try another fill' : 'Autofill grid'}
             </button>
             {pencilled && (
               <>
@@ -162,6 +196,8 @@ export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }:
             )}
           </div>
         )}
+
+        {ready && wordList.updating && <p className="tiny muted fill-note">Updating word list…</p>}
 
         {!ready && (
           <p className="tiny muted fill-note">
@@ -195,8 +231,17 @@ export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }:
 
         {ready && !running && !message && !tooShort && (
           <p className="tiny muted fill-note">
-            Autofill pencils the open squares in blue, leaving everything you've typed alone. Lock
-            theme entries in the entry panel to protect them from editing and clearing.
+            {region.length === 0 ? (
+              <>
+                Autofill pencils the open squares in blue, leaving everything you've typed alone.{' '}
+                <kbd>Shift</kbd>+drag on the grid to fill just part of it.
+              </>
+            ) : regionOpen === 0 ? (
+              'The selection has no open squares to fill.'
+            ) : (
+              'Letters outside the selection, pencilled or typed, stay put and shape the fill.'
+            )}{' '}
+            Lock theme entries in the entry panel to protect them from editing and clearing.
           </p>
         )}
 
@@ -208,6 +253,10 @@ export function FillPanel({ puzzle, numbering, wordList, update, onJumpToSlot }:
           />
           Mark squares where few or no letters work
         </label>
+
+        <button className="link tiny fill-mywords" onClick={() => openMyWords()}>
+          Edit my words…
+        </button>
       </div>
     </section>
   )

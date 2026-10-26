@@ -2,7 +2,15 @@ import { useMemo } from 'react'
 import type { Numbering, Slot } from '../types/puzzle'
 import type { WordListState } from '../hooks/useWordList'
 import { useFillSettings } from '../hooks/useFillSettings'
+import {
+  DEFAULT_OVERRIDE_SCORE,
+  removeWordOverride,
+  setWordOverride,
+  useWordOverrides,
+  wordProblem,
+} from '../hooks/useWordOverrides'
 import { suggest, type Suggestion } from '../lib/suggest'
+import { openMyWords, ScoreSelect } from './MyWordsDialog'
 
 const SHOWN = 100
 
@@ -45,6 +53,7 @@ export function SuggestionList({
   onApply,
 }: SuggestionListProps) {
   const { minScore } = useFillSettings()
+  const overrides = useWordOverrides()
 
   const list = wordList.status === 'ready' ? wordList.list : null
   const result = useMemo(
@@ -80,20 +89,56 @@ export function SuggestionList({
   }
 
   if (slot.complete) {
-    const info = /^[A-Z0-9]+$/.test(slot.answer) ? wordList.list.lookup(slot.answer) : undefined
+    const answer = slot.answer
+    const valid = wordProblem(answer) === null
+    const info = valid ? wordList.list.lookup(answer) : undefined
+    // Read the override directly too, so a change shows before the rebuilt list arrives.
+    const override = valid ? overrides[answer] : undefined
+    const score = typeof override === 'number' ? override : info?.score
     return (
       <div className="field">
         {head}
-        <p className="tiny sugg-note">
-          {info ? (
+        <p className="tiny sugg-note sugg-entry">
+          <b className="sugg-word">{answer}</b>{' '}
+          {override === 'banned' ? (
             <>
-              <b className="sugg-word">{info.word}</b> scores {info.score}
-              {info.seen > 0 && <>, seen {info.seen}× in the NYT corpus</>}.
+              <span className="muted">is on your never-suggest list.</span>{' '}
+              <button className="link" onClick={() => removeWordOverride(answer)}>
+                Allow it again
+              </button>
+            </>
+          ) : score !== undefined ? (
+            <>
+              scores{' '}
+              <ScoreSelect
+                value={score}
+                onChange={(value) => setWordOverride(answer, value)}
+                label={`Score for ${answer}`}
+                className="input sugg-entry-score"
+              />
+              {info && info.seen > 0 && <> · seen {info.seen}× in the NYT corpus</>}
+              {override !== undefined && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <button className="link" onClick={() => openMyWords(answer)}>
+                    your score
+                  </button>
+                </>
+              )}
             </>
           ) : (
             <>
-              <b className="sugg-word">{slot.answer}</b>{' '}
-              <span className="muted">isn't in the word list.</span>
+              <span className="muted">isn't in the word list.</span>{' '}
+              {valid && (
+                <button
+                  className="link"
+                  onClick={() => setWordOverride(answer, DEFAULT_OVERRIDE_SCORE)}
+                  title={`Add it to your words at score ${DEFAULT_OVERRIDE_SCORE}`}
+                >
+                  Add to my words
+                </button>
+              )}
             </>
           )}
         </p>
@@ -112,6 +157,9 @@ export function SuggestionList({
     )
   }
 
+  // Hide words banned since the list was built; the rebuilt one won't have them either.
+  const shown = result.suggestions.filter((s) => overrides[s.word] !== 'banned')
+
   return (
     <div className="field">
       {head}
@@ -121,40 +169,54 @@ export function SuggestionList({
           : `${result.total.toLocaleString()} fit · ${result.viable.toLocaleString()} keep every crossing open`}
       </span>
 
-      {result.suggestions.length > 0 && (
+      {shown.length > 0 && (
         <div className="sugg-list" role="listbox" onMouseLeave={() => onPreview(null)}>
-          {result.suggestions.map((s) => {
+          {shown.map((s) => {
             const tone = crossTone(s.crossOptions)
             return (
-              <button
-                key={s.word}
-                role="option"
-                aria-selected={false}
-                className={'sugg-row' + (tone === 'dead' ? ' dead' : '')}
-                // Keep keyboard focus on the grid so typing carries on after a click.
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => onPreview(s.word)}
-                onFocus={() => onPreview(s.word)}
-                onBlur={() => onPreview(null)}
-                onClick={() => {
-                  onPreview(null)
-                  onApply(s.word)
-                }}
-              >
-                <span className="sugg-word">{s.word}</span>
-                {s.seen > 0 && (
-                  <span className="sugg-seen" title={`Seen ${s.seen}× in the NYT corpus`}>
-                    NYT×{s.seen}
+              <div className="sugg-item" role="presentation" key={s.word}>
+                <button
+                  role="option"
+                  aria-selected={false}
+                  className={'sugg-row' + (tone === 'dead' ? ' dead' : '')}
+                  // Keep keyboard focus on the grid so typing carries on after a click.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => onPreview(s.word)}
+                  onFocus={() => onPreview(s.word)}
+                  onBlur={() => onPreview(null)}
+                  onClick={() => {
+                    onPreview(null)
+                    onApply(s.word)
+                  }}
+                >
+                  <span className="sugg-word">{s.word}</span>
+                  {s.seen > 0 && (
+                    <span className="sugg-seen" title={`Seen ${s.seen}× in the NYT corpus`}>
+                      NYT×{s.seen}
+                    </span>
+                  )}
+                  <span className="spacer" />
+                  <span className="sugg-cross" title={crossTitle(s)}>
+                    <i className={tone} style={{ width: `${crossWidth(s.crossOptions) * 100}%` }} />
                   </span>
-                )}
-                <span className="spacer" />
-                <span className="sugg-cross" title={crossTitle(s)}>
-                  <i className={tone} style={{ width: `${crossWidth(s.crossOptions) * 100}%` }} />
-                </span>
-                <span className="sugg-score" title="Word list score">
-                  {s.score}
-                </span>
-              </button>
+                  <span className="sugg-score" title="Word list score">
+                    {s.score}
+                  </span>
+                </button>
+                <button
+                  className="sugg-ban"
+                  title={`Never suggest ${s.word}`}
+                  aria-label={`Never suggest ${s.word}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPreview(null)
+                    setWordOverride(s.word, 'banned')
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             )
           })}
         </div>

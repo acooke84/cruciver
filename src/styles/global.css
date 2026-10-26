@@ -436,6 +436,69 @@ select {
   background: var(--surface-2);
 }
 
+.dialog-wide {
+  width: min(560px, 100%);
+}
+
+.dialog-foot .grow {
+  align-self: center;
+}
+
+/* ---------- My words ---------- */
+
+.mywords-note,
+.mywords-error {
+  margin: 0;
+}
+
+.mywords-error {
+  color: var(--error);
+}
+
+.mywords-add,
+.mywords-head,
+.mywords-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mywords-add select,
+.mywords-score {
+  width: auto;
+}
+
+.mywords-count {
+  white-space: nowrap;
+}
+
+.mywords-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mywords-row {
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mywords-row:last-child {
+  border-bottom: 0;
+}
+
+.mywords-score {
+  padding: 2px 6px;
+  font-size: 12.5px;
+}
+
+.mywords-list > .mywords-note {
+  padding: 6px 10px;
+}
+
 .preset-row {
   display: flex;
   flex-wrap: wrap;
@@ -647,6 +710,17 @@ select {
 
 .xw-cell.selected:not(.block) {
   background: var(--word-strong);
+}
+
+/*
+ * The region to autofill: an inset ring and a light tint, both drawn as box-shadows so they
+ * layer over the word highlight, the trouble stripes and the error overlay without replacing
+ * any of them.
+ */
+.xw-cell.in-region:not(.block) {
+  box-shadow:
+    inset 0 0 0 2px rgba(47, 111, 235, 0.55),
+    inset 0 0 0 100px rgba(47, 111, 235, 0.1);
 }
 
 /*
@@ -1124,8 +1198,60 @@ select {
   font: inherit;
 }
 
-.sugg-row:last-child {
+/* A row plus its "never suggest" button, which sits over the row's right end. */
+.sugg-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.sugg-item:last-child .sugg-row {
   border-bottom: 0;
+}
+
+.sugg-ban {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.sugg-item:hover .sugg-ban,
+.sugg-item:focus-within .sugg-ban {
+  opacity: 1;
+}
+
+/* Room for the button, kept even while it's hidden so rows don't shift on hover. */
+.sugg-item .sugg-row {
+  padding-right: 28px;
+}
+
+.sugg-ban:hover,
+.sugg-ban:focus-visible {
+  color: var(--error);
+  border-color: var(--error);
+  outline: none;
+}
+
+.sugg-entry-score {
+  display: inline-block;
+  width: auto;
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.fill-mywords {
+  align-self: flex-start;
 }
 
 .sugg-row:hover,

@@ -19,6 +19,33 @@ describe('WordList.parse', () => {
   })
 })
 
+describe('WordList.parse with overrides', () => {
+  const text = ['CRAB;80;5', 'CRIB;60', 'DRAB;70', 'GRAB;40'].join('\n')
+
+  it('drops banned entries from matches, counts and lookups', () => {
+    const list = WordList.parse(text, { CRAB: 'banned' })
+    expect(words(list, ['', 'R', '', 'B'])).toEqual(['DRAB', 'CRIB', 'GRAB'])
+    expect(list.count(['C', 'R', '', 'B'])).toBe(1)
+    expect(list.lookup('CRAB')).toBeUndefined()
+    expect(list.size).toBe(3)
+  })
+
+  it('rescores entries, changing their rank and whether a minimum lets them in', () => {
+    const list = WordList.parse(text, { GRAB: 95, CRAB: 20 })
+    expect(words(list, ['', 'R', '', 'B'])).toEqual(['GRAB', 'DRAB', 'CRIB', 'CRAB'])
+    expect(words(list, ['', 'R', '', 'B'], 50)).toEqual(['GRAB', 'DRAB', 'CRIB'])
+    // The seen count survives a rescore.
+    expect(list.lookup('CRAB')).toEqual({ word: 'CRAB', score: 20, seen: 5 })
+  })
+
+  it('adds entries the base list lacks, and ignores ones that cannot go in a grid', () => {
+    const list = WordList.parse(text, { BRAB: 65, XY: 90, 'NO WAY': 90 })
+    expect(list.lookup('BRAB')).toEqual({ word: 'BRAB', score: 65, seen: 0 })
+    expect(words(list, ['', 'R', 'A', 'B'], 65)).toEqual(['CRAB', 'DRAB', 'BRAB'])
+    expect(list.size).toBe(5)
+  })
+})
+
 describe('WordList matching', () => {
   const list = WordList.parse(
     ['CRAB;80', 'CRIB;60', 'CRUB;10', 'DRAB;70', 'SCRUB;50', 'R2D2;40'].join('\n'),

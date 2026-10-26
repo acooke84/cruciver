@@ -152,9 +152,15 @@ export function acceptPencil(puzzle: Puzzle): Cell[] {
   return puzzle.grid.map((cell) => (cell.pencil ? { block: false, letter: cell.letter } : cell))
 }
 
-/** Erase every pencilled letter, leaving ink alone. */
-export function clearPencil(puzzle: Puzzle): Cell[] {
-  return puzzle.grid.map((cell) => (cell.pencil ? { block: false, letter: '' } : cell))
+/**
+ * Erase pencilled letters, leaving ink alone. With `cells`, only those squares are erased —
+ * a region fill replaces its own earlier pencil but keeps the pencil around it.
+ */
+export function clearPencil(puzzle: Puzzle, cells?: Iterable<number>): Cell[] {
+  const only = cells ? new Set(cells) : null
+  return puzzle.grid.map((cell, i) =>
+    cell.pencil && (!only || only.has(i)) ? { block: false, letter: '' } : cell,
+  )
 }
 
 /**

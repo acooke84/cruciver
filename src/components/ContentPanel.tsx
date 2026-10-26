@@ -5,6 +5,7 @@ import { useWordList } from '../hooks/useWordList'
 import type { GridStats } from '../lib/validation'
 import { ClueList } from './ClueList'
 import { FillPanel } from './FillPanel'
+import { MyWordsDialog } from './MyWordsDialog'
 import { SlotInspector } from './SlotInspector'
 import { ValidationPanel } from './ValidationPanel'
 
@@ -15,6 +16,8 @@ interface ContentPanelProps {
   problems: Problem[]
   activeSlot: Slot | undefined
   selectedCell: number | null
+  /** Squares marked out for a region autofill; empty when there's no region. */
+  region: number[]
   update: (fn: (current: Puzzle) => Puzzle, options?: { history?: boolean }) => void
   onSelectSlot: (slot: Slot) => void
   onSelectCell: (index: number) => void
@@ -30,6 +33,7 @@ export function ContentPanel({
   problems,
   activeSlot,
   selectedCell,
+  region,
   update,
   onSelectSlot,
   onSelectCell,
@@ -98,6 +102,7 @@ export function ContentPanel({
         puzzle={puzzle}
         numbering={numbering}
         wordList={wordList}
+        region={region}
         update={update}
         onJumpToSlot={onJumpToSlot}
       />
@@ -144,6 +149,8 @@ export function ContentPanel({
         title="To do"
         emptyNote="Every entry is filled and clued. This puzzle is ready."
       />
+
+      <MyWordsDialog wordList={wordList} />
     </>
   )
 }
